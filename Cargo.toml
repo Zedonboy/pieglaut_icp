@@ -1,0 +1,4 @@
+[workspace]
+members = [
+    "src/piegalut_icp_backend",
+]

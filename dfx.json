@@ -1,0 +1,30 @@
+{
+  "canisters": {
+    "piegalut_icp_backend": {
+      "candid": "src/piegalut_icp_backend/piegalut_icp_backend.did",
+      "package": "piegalut_icp_backend",
+      "type": "rust"
+    },
+    "piegalut_icp_frontend": {
+      "dependencies": [
+        "piegalut_icp_backend"
+      ],
+      "frontend": {
+        "entrypoint": "src/piegalut_icp_frontend/src/index.html"
+      },
+      "source": [
+        "src/piegalut_icp_frontend/assets",
+        "dist/piegalut_icp_frontend/"
+      ],
+      "type": "assets"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
