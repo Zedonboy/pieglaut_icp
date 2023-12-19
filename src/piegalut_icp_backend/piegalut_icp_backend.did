@@ -1,3 +1,24 @@
+type Message = record { id : nat; content : text; conversation_id : nat };
+type Result = variant { ok : int32; err : text; Data : int32 };
+type Result_1 = variant { ok : int32; err : text; Data : int32 };
+type Result_2 = variant {
+  ok : vec Verification;
+  err : text;
+  Data : vec Verification;
+};
+type Result_3 = variant { ok : Verification; err : text; Data : Verification };
+type Verification = record {
+  id : text;
+  code : text;
+  email : text;
+  message_id : nat64;
+};
 service : {
-    "greet": (text) -> (text) query;
+  create_message : (Message) -> (Result);
+  create_verification : (Verification) -> (Result);
+  delete_verification : (text) -> (Result_1);
+  get_all_verification : (text) -> (Result_2) query;
+  get_verification : (text) -> (Result_3) query;
+  greet : (text) -> (text) query;
+  update_verification : (text, Verification) -> (Result_1);
 }
