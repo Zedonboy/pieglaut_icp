@@ -5,6 +5,11 @@
       "package": "piegalut_icp_backend",
       "type": "rust"
     },
+    "system_api": {
+      "candid": "src/vetkd_system_api/vetkd_system_api.did",
+      "package": "vetkd_system_api",
+      "type": "rust"
+    },
     "piegalut_icp_frontend": {
       "dependencies": [
         "piegalut_icp_backend"

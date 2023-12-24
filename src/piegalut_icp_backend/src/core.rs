@@ -27,7 +27,7 @@ macro_rules! generate_ic_model {
                     let rslt = binding.get(&data_id);
                     match rslt {
                         Some(data) => {
-                            return Result::Data::<$i, String>(data.clone());
+                            return Result::Ok::<$i, String>(data.clone());
                         },
                         None => {
                             return Result::Err("Not Found".to_string())
@@ -43,7 +43,7 @@ macro_rules! generate_ic_model {
                     let mut binding = store.borrow_mut();
                     if binding.contains_key(&data_id) {
                         binding.insert(data_id, data);
-                        return Result::Data(200)
+                        return Result::Ok(200)
                     } else { return Result::Err("Not Found") }
                 })
             }
@@ -68,7 +68,7 @@ macro_rules! generate_ic_model {
                 $guard_func();
                 $store.with(|store| {
                     let data = store.borrow().values().cloned().collect();
-                    return Result::Data(data)
+                    return Result::Ok(data)
                 })
             }
 

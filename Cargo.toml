@@ -1,4 +1,5 @@
 [workspace]
 members = [
     "src/piegalut_icp_backend",
+    "src/vetkd_system_api"
 ]

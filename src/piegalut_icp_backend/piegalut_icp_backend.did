@@ -1,24 +1,48 @@
-type Message = record { id : nat; content : text; conversation_id : nat };
-type Result = variant { ok : int32; err : text; Data : int32 };
-type Result_1 = variant { ok : int32; err : text; Data : int32 };
-type Result_2 = variant {
-  ok : vec Verification;
-  err : text;
-  Data : vec Verification;
+type Conversation = record {
+  id : text;
+  duration : nat32;
+  messages : vec Message;
+  read_only : bool;
+  created_by : principal;
+  principals : vec principal;
 };
-type Result_3 = variant { ok : Verification; err : text; Data : Verification };
+type Message = record {
+  id : text;
+  duration : nat32;
+  content : text;
+  conversation_id : text;
+  sender : principal;
+  shared_key : text;
+  sender_id : text;
+  sender_name : text;
+  attachments : opt vec text;
+  receipients : vec text;
+};
+type Result = variant { ok : int32; err : text };
+type Result_1 = variant { ok : int32; err : text };
+type Result_2 = variant { ok : vec Verification; err : text };
+type Result_3 = variant { ok : TWOFA; err : text };
+type Result_4 = variant { ok : Verification; err : text };
+type TWOFA = record { id : text; expire_at : nat64; code : text };
 type Verification = record {
   id : text;
   code : text;
   email : text;
-  message_id : nat64;
+  message_id : text;
 };
-service : {
+service : () -> {
+  create_conversation : (Conversation) -> (Result);
   create_message : (Message) -> (Result);
   create_verification : (Verification) -> (Result);
   delete_verification : (text) -> (Result_1);
-  get_all_verification : (text) -> (Result_2) query;
-  get_verification : (text) -> (Result_3) query;
+  encrypted_ibe_decryption_key_for_caller : (vec nat8) -> (text);
+  encrypted_symmetric_key_for_caller : (vec nat8) -> (text);
+  get_all_verification : () -> (Result_2) query;
+  get_twofa_by_parameter : (text) -> (Result_3);
+  get_verification : (text) -> (Result_4) query;
+  get_verification_by_parameter : (text) -> (Result_4);
   greet : (text) -> (text) query;
+  ibe_encryption_key : () -> (text);
+  symmetric_key_verification_key : () -> (text);
   update_verification : (text, Verification) -> (Result_1);
 }
