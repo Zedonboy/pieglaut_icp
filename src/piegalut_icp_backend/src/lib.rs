@@ -377,7 +377,7 @@ async fn public_get_profile() -> Profile {
 }
 
 #[update]
-async fn public_create_profile(twofa_code : String, profile : Profile) -> Result<u32, ()> {
+async fn public_create_profile(twofa_code : String) -> Result<u32, ()> {
     let optional_twofa = TWOFA_STORE.with(|store|
     {
         let binding = store.borrow();
@@ -387,8 +387,9 @@ async fn public_create_profile(twofa_code : String, profile : Profile) -> Result
     assert!(optional_twofa.is_some(), "2FA has expired");
     let person = caller();
     assert!(person != Principal::anonymous());
-    assert!(&optional_twofa.unwrap().receipient_id == &profile.email, "Email must match with the 2FA code");
+    // assert!(&optional_twofa.unwrap().receipient_id == &profile.email, "Email must match with the 2FA code");
 
+    let profile = Profile { name: "".to_string(), email: optional_twofa.unwrap().receipient_id };
     return  PROFILE_STORE.with(|store| {
         let mut binding = store.borrow_mut();
         binding.insert(person.to_string(), profile);
