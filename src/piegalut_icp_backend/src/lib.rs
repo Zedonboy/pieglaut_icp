@@ -6,7 +6,7 @@ use ic_cdk::{
         call::CallResult,
         management_canister::http_request::{http_request, CanisterHttpRequestArgument, HttpHeader, HttpMethod},
     },
-    caller, update,
+    caller, update, query,
 };
 use paste::paste;
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,6 @@ use types::{
 mod types;
 
 const VETKD_SYSTEM_API_CANISTER_ID: &str = "s55qq-oqaaa-aaaaa-aaakq-cai";
-
 
 mod core;
 type ConversationStore = BTreeMap<String, Conversation>;
@@ -34,6 +33,9 @@ thread_local! {
     static VERIFICATION_STORE : RefCell<BTreeMap<String, Verification>> = RefCell::new(BTreeMap::new());
     static GENERAL_KEY_STORE : RefCell<BTreeMap<String, String>> = RefCell::new(BTreeMap::new());
     static TWOFA_STORE : RefCell<BTreeMap<String, TWOFA>> = RefCell::new(BTreeMap::new());
+    static MESSAGE_STORE : RefCell<BTreeMap<String, Message>> = RefCell::new(BTreeMap::new());
+    static PROFILE_STORE : RefCell<BTreeMap<String, Profile>> = RefCell::new(BTreeMap::new());
+    static EMAIL_BLOCK_STORE : RefCell<BTreeMap<String, Vec<Principal>>> = RefCell::new(BTreeMap::new())
 }
 #[ic_cdk::query]
 fn greet(name: String) -> String {
@@ -51,8 +53,8 @@ pub enum Result<T, E> {
 
 #[derive(Clone, CandidType, Serialize, Deserialize)]
 struct Conversation {
-    principals: Vec<Principal>,
-    messages: Vec<Message>,
+    receipients: Vec<String>,
+    messages: Vec<String>,
     duration: u32,
     read_only: bool,
     created_by: Principal,
@@ -60,17 +62,23 @@ struct Conversation {
 }
 
 #[derive(Clone, CandidType, Serialize, Deserialize)]
+struct Profile {
+    name : String,
+    email : String
+}
+
+#[derive(Clone, CandidType, Serialize, Deserialize)]
 struct Message {
     id: String,
     content: String,
     conversation_id: String,
-    shared_key: String,
     sender: Principal,
     attachments: Option<Vec<String>>,
     duration: u32,
-    receipients: Vec<String>,
-    sender_name: String,
-    sender_id: String
+    // this means Email.
+    receipient_id: String,
+    // this is Principal ID
+    receiver: String
 }
 
 #[derive(Clone, CandidType, Serialize, Deserialize)]
@@ -86,6 +94,7 @@ struct TWOFA {
     id: String,
     code: String,
     expire_at: u64,
+    receipient_id: String
 }
 
 #[ic_cdk::init]
@@ -106,17 +115,39 @@ fn create_conversation(mut convo: Conversation) -> Result<i32, String> {
     })
 }
 
-#[ic_cdk::update(name = "create_message")]
-async fn create_message(mssg: Message) -> Result<i32, String> {
+#[ic_cdk::update(name = "send_message")]
+async fn send_message(mssg: Message) -> Result<i32, String> {
+    let optional_mssg = MESSAGE_STORE.with(|store|{
+        let binding = store.borrow();
+        return binding.contains_key(&mssg.id);
+    });
+
+    if optional_mssg {
+        return Result::Err("Message Exists".to_string());
+    }
+
     SYSTEM_CONVERSATIONS.with(|conversation_store| {
         let mut binding = conversation_store.borrow_mut();
         let option = binding.get_mut(&mssg.conversation_id);
         match option {
             Some(convo) => {
                 let person = caller();
+                let optional_profile = PROFILE_STORE.with(|profile_store|{
+                    let binding = profile_store.borrow();
+                    let x = binding.get(&person.to_string());
+                    x.cloned()
+                });
+
+                if optional_profile.is_none() {
+                    return Result::Err("You are not registered into our system".to_string());
+                }
+
                 if convo.read_only {
                     if person == convo.created_by {
                         // insert message.
+                        let cloned_mssg = mssg.clone();
+                        let cloned_profile = optional_profile.unwrap().clone();
+                        ic_cdk::spawn(send_message_notification(cloned_mssg, cloned_profile));
                         insert_message(mssg, person, convo);
                         return Result::Ok(200);
                     } else {
@@ -125,9 +156,12 @@ async fn create_message(mssg: Message) -> Result<i32, String> {
                         );
                     }
                 } else {
-                    if convo.principals.contains(&person) {
+                   
+                    if convo.receipients.contains(&optional_profile.as_ref().unwrap().email) {
                         // check_webhook_for_message_before_sending(&mssg);
-                        send_message_notification(&mssg);
+                        let cloned_mssg = mssg.clone();
+                        let cloned_profile = optional_profile.unwrap().clone();
+                        ic_cdk::spawn(send_message_notification(cloned_mssg, cloned_profile));
                         insert_message(mssg, person, convo);
                         //make http calls calls.
                         return Result::Ok(200);
@@ -148,11 +182,15 @@ async fn create_message(mssg: Message) -> Result<i32, String> {
 fn insert_message(mut mssg: Message, person: Principal, convo: &mut Conversation) {
     mssg.sender = person;
     convo.duration = mssg.duration;
-    convo.messages.push(mssg);
+    convo.messages.push(mssg.id.clone());
+    MESSAGE_STORE.with(|store| {
+        store.borrow_mut().insert(mssg.id.clone(), mssg)
+    });
 }
 
 
-async fn send_message_notification(mssg: &Message) {
+async fn send_message_notification(mssg: Message, profile : Profile) {
+   
     let request_headers = vec![HttpHeader {
         name: "Authorization".to_string(),
         value: format!("Basic {BASIC_AUTH}"),
@@ -160,9 +198,9 @@ async fn send_message_notification(mssg: &Message) {
 
     let request_data = json!({
         "id" : mssg.id,
-        "receipients": mssg.receipients,
-        "sender_name": mssg.sender_name,
-        "sender_email" : mssg.sender_id
+        "receipient_id": mssg.receipient_id,
+        "sender_name": profile.name,
+        "sender_email" : profile.email
     });
 
     let json_utf8: Vec<u8> = request_data.to_string().into_bytes();
@@ -172,7 +210,7 @@ async fn send_message_notification(mssg: &Message) {
     let request = CanisterHttpRequestArgument {
         url: "https://pieglaut/webhook/icp/message/".to_string(),
         max_response_bytes: None,
-        method: HttpMethod::GET,
+        method: HttpMethod::POST,
         body: request_body,
         transform: None,
         headers: request_headers,
@@ -241,7 +279,6 @@ async fn get_twofa_by_parameter(param_value: String) -> Result<TWOFA, String> {
         }
     })
 }
-
 
 #[update]
 async fn symmetric_key_verification_key() -> String {
@@ -325,6 +362,60 @@ async fn encrypted_ibe_decryption_key_for_caller(encryption_public_key: Vec<u8>)
     hex::encode(response.encrypted_key)
 }
 
+
+#[query]
+async fn public_get_profile() -> Profile {
+    let person = caller();
+    assert!(person != Principal::anonymous(), "Anonymous call not allowed");
+    let optional_profile = PROFILE_STORE.with(|store| {
+        let binding = store.borrow();
+        binding.get(&person.to_string()).cloned()
+    });
+
+    assert!(optional_profile.is_some(), "You must be registered");
+    optional_profile.unwrap()
+}
+
+#[update]
+async fn public_create_profile(twofa_code : String, profile : Profile) -> Result<u32, ()> {
+    let optional_twofa = TWOFA_STORE.with(|store|
+    {
+        let binding = store.borrow();
+        binding.get(&twofa_code).cloned()
+    });
+
+    assert!(optional_twofa.is_some(), "2FA has expired");
+    let person = caller();
+    assert!(person != Principal::anonymous());
+    assert!(&optional_twofa.unwrap().receipient_id == &profile.email, "Email must match with the 2FA code");
+
+    return  PROFILE_STORE.with(|store| {
+        let mut binding = store.borrow_mut();
+        binding.insert(person.to_string(), profile);
+        return  Result::Ok(200);
+    })
+}
+
+#[update]
+async fn public_update_profile(mut profile : Profile) -> Result<u32, ()> {
+    let person = caller();
+    assert!(person != Principal::anonymous(), "You must be signed in");
+    let principal_id = person.to_text();
+    let profile_exist = PROFILE_STORE.with(|store| {
+        let binding = store.borrow();
+        binding.contains_key(&principal_id)
+    });
+
+    assert!(profile_exist, "You must be registered");
+    PROFILE_STORE.with(|store|{
+        let mut binding = store.borrow_mut();
+        let prev_profile = binding.get(&principal_id).unwrap();
+        profile.email = prev_profile.email.clone();
+        binding.insert(principal_id, profile);
+        return  Result::Ok(200);
+    })
+}
+
 fn bls12_381_test_key_1() -> VetKDKeyId {
     VetKDKeyId {
         curve: VetKDCurve::Bls12_381,
@@ -353,4 +444,7 @@ fn is_management() {
 }
 
 generate_ic_model!(Verification, is_management, VERIFICATION_STORE);
+generate_ic_model!(Message, is_management, MESSAGE_STORE);
+generate_ic_model!(TWOFA, is_management, TWOFA_STORE);
+// generate_ic_model!(Profile, is_management, PROFILE_STORE);
 ic_cdk::export_candid!();

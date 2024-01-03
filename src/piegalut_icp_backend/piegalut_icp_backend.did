@@ -1,7 +1,7 @@
 type Conversation = record {
   id : text;
   duration : nat32;
-  messages : vec Message;
+  messages : vec text;
   read_only : bool;
   created_by : principal;
   principals : vec principal;
@@ -20,9 +20,12 @@ type Message = record {
 };
 type Result = variant { ok : int32; err : text };
 type Result_1 = variant { ok : int32; err : text };
-type Result_2 = variant { ok : vec Verification; err : text };
-type Result_3 = variant { ok : TWOFA; err : text };
-type Result_4 = variant { ok : Verification; err : text };
+type Result_2 = variant { ok : vec Message; err : text };
+type Result_3 = variant { ok : vec TWOFA; err : text };
+type Result_4 = variant { ok : vec Verification; err : text };
+type Result_5 = variant { ok : Message; err : text };
+type Result_6 = variant { ok : TWOFA; err : text };
+type Result_7 = variant { ok : Verification; err : text };
 type TWOFA = record { id : text; expire_at : nat64; code : text };
 type Verification = record {
   id : text;
@@ -33,16 +36,26 @@ type Verification = record {
 service : () -> {
   create_conversation : (Conversation) -> (Result);
   create_message : (Message) -> (Result);
+  create_twofa : (TWOFA) -> (Result);
   create_verification : (Verification) -> (Result);
+  delete_message : (text) -> (Result_1);
+  delete_twofa : (text) -> (Result_1);
   delete_verification : (text) -> (Result_1);
   encrypted_ibe_decryption_key_for_caller : (vec nat8) -> (text);
   encrypted_symmetric_key_for_caller : (vec nat8) -> (text);
-  get_all_verification : () -> (Result_2) query;
-  get_twofa_by_parameter : (text) -> (Result_3);
-  get_verification : (text) -> (Result_4) query;
-  get_verification_by_parameter : (text) -> (Result_4);
+  get_all_message : () -> (Result_2) query;
+  get_all_twofa : () -> (Result_3) query;
+  get_all_verification : () -> (Result_4) query;
+  get_message : (text) -> (Result_5) query;
+  get_twofa : (text) -> (Result_6) query;
+  get_twofa_by_parameter : (text) -> (Result_6);
+  get_verification : (text) -> (Result_7) query;
+  get_verification_by_parameter : (text) -> (Result_7);
   greet : (text) -> (text) query;
   ibe_encryption_key : () -> (text);
+  send_message : (Message) -> (Result_1);
   symmetric_key_verification_key : () -> (text);
+  update_message : (text, Message) -> (Result_1);
+  update_twofa : (text, TWOFA) -> (Result_1);
   update_verification : (text, Verification) -> (Result_1);
 }
